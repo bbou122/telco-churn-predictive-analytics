@@ -1,4 +1,4 @@
-# streamlit_app.py – REVISED FULL VERSION WITH SHAP (handles encoding errors in CSV)
+# streamlit_app.py – REVISED VERSION WITH FEATURE IMPORTANCE, PIE CHART, AND SUMMARY STATS (no SHAP)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,12 +6,11 @@ import xgboost as xgb
 import urllib.request
 import os
 import socket  # For timeout
-import shap
 import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
-st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions with SHAP Explanations**")
+st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
 
 # ——— LOAD MODEL & FEATURES ———
 @st.cache_resource
@@ -33,7 +32,7 @@ def load_model_and_features():
         if os.path.exists(local_model):
             os.remove(local_model)
         
-        # Confirm engineered features (from notebook)
+        # Confirm engineered features
         engineered = ['Month_to_Month', 'Fiber_Optic', 'No_TechSupport', 'Num_Services']
         if all(f in features for f in engineered):
             st.write("Model loaded — engineered features confirmed!")
@@ -84,8 +83,7 @@ uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
 if uploaded is not None:
     try:
-        # FIX: Handle encoding errors (e.g., latin1 for non-UTF8 CSVs)
-        data = pd.read_csv(uploaded, encoding='latin1')
+        data = pd.read_csv(uploaded, encoding='latin1')  # Handles encoding issues
         X = preprocess(data)
         probs = model.predict_proba(X)[:, 1]
         
@@ -97,19 +95,40 @@ if uploaded is not None:
         
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
-        st.download_button("Download", result.to_csv(index=False), "predictions.csv")
+        st.download_button("Download Predictions", result.to_csv(index=False), "churn_predictions.csv", "text/csv")
         
-        # SHAP for highest-risk customer
-        if len(result) > 0:
-            top_index = result.index[0]
-            st.subheader(f"SHAP Explanation for Highest-Risk Customer: {result.loc[top_index, 'customerID']}")
-            explainer = shap.TreeExplainer(model)
-            shap_values = explainer.shap_values(X.iloc[top_index:top_index+1])
-            fig, ax = plt.subplots()
-            shap.force_plot(explainer.expected_value, shap_values, X.iloc[top_index], matplotlib=True, show=False)
-            st.pyplot(fig)
+        # ADD 3: Summary Stats Section
+        st.subheader("Summary Stats")
+        avg_prob = np.mean(result["Churn_Probability"])
+        high_risk_count = len(result[result["Churn_Probability"] >= 0.5])
+        high_risk_pct = (high_risk_count / len(result) * 100) if len(result) > 0 else 0
+        top_risk_segment = result.iloc[0]["Prediction"] if len(result) > 0 else "N/A"
+        st.markdown(f"""
+        - Average Churn Probability: **{avg_prob:.3f}**
+        - High-Risk Customers (Probability ≥ 0.5): **{high_risk_count} ({high_risk_pct:.1f}%)**
+        - Top Risk Prediction: **{top_risk_segment}**
+        """)
+        
+        # ADD 1: Feature Importance Chart
+        st.subheader("Top Churn Drivers (Feature Importance)")
+        importances = model.feature_importances_
+        imp_df = pd.DataFrame({"Feature": feature_names, "Importance": importances}).sort_values("Importance", ascending=False).head(10)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.barh(imp_df["Feature"], imp_df["Importance"], color='skyblue')
+        ax.set_xlabel("Importance")
+        ax.set_title("Top 10 Features Driving Churn")
+        ax.invert_yaxis()
+        st.pyplot(fig)
+        
+        # ADD 2: Churn Distribution Pie Chart
+        st.subheader("Churn Distribution")
+        churn_counts = result["Prediction"].value_counts()
+        fig_pie, ax_pie = plt.subplots(figsize=(6, 6))
+        ax_pie.pie(churn_counts, labels=churn_counts.index, autopct='%1.1f%%', colors=['lightgreen', 'salmon'])
+        ax_pie.set_title("Percentage Will Churn vs Will Stay")
+        st.pyplot(fig_pie)
     except Exception as e:
-        st.error(f"Error: {e}. Try uploading a different CSV or check encoding.")
+        st.error(f"Error: {e}. Check CSV format or encoding.")
 else:
     st.info("Upload CSV to start!")
     st.markdown("**Test file:** [Download](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
