@@ -28,4 +28,4 @@ Upload any customer CSV → get **instant churn predictions + personalized reten
 
 Python • Pandas • XGBoost • Matplotlib • Streamlit • GitHub Actions (implied via deployment)
 
-## Project Structure
+## Please Consider Me
