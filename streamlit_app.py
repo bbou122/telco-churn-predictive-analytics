@@ -11,7 +11,7 @@ st.markdown("**XGBoost Model • 0.84+ AUC • Instant Predictions**")
 @st.cache_resource
 def load_model():
     # ←←← THIS LINE USES YOUR GITHUB REPO ←←←
-    raw_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv"
+    raw_url = "https://github.com/bbou122/telco-churn-predictive-analytics/blob/main/data/raw/telco_churn.csv"
     df = pd.read_csv(raw_url)
     
     # (All the cleaning + feature engineering exactly like your notebook)
@@ -85,5 +85,5 @@ else:
     st.info("Upload a CSV on the left → get instant churn predictions!")
     st.markdown("""
     **Quick test:** Download the exact training data  
-    → [telco_churn.csv](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)
+    → [telco_churn.csv](https://github.com/bbou122/telco-churn-predictive-analytics/blob/main/data/raw/telco_churn.csv)
     """)
