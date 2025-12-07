@@ -1,23 +1,27 @@
-# streamlit_app.py 
+# streamlit_app.py – REVISED FOR FAST DEPLOY (hang-free on free tier)
 import streamlit as st
 import pandas as pd
 import numpy as np
 import xgboost as xgb
 import urllib.request
 import os
+import socket  # For timeout
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
 st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
 
-# ——— LOAD MODEL & FEATURES (robust, with download & error handling) ———
+# ——— LOAD MODEL & FEATURES (with timeout + error handling) ———
 @st.cache_resource
 def load_model_and_features():
     model_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/model.json"
     feat_url  = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/feature_names.csv"
     
     try:
-        # Download model to temp local file
+        # Set timeout for downloads (prevents hangs on slow connections)
+        socket.setdefaulttimeout(30)
+        
+        # Download model
         local_model = "temp_model.json"
         urllib.request.urlretrieve(model_url, local_model)
         
@@ -28,42 +32,33 @@ def load_model_and_features():
         # Load features
         features = pd.read_csv(feat_url)["feature"].tolist()
         
-        # Cleanup temp file
+        # Cleanup
         if os.path.exists(local_model):
             os.remove(local_model)
         
         return model, features
     except Exception as e:
-        st.error(f"Failed to load model or features: {e}. Check GitHub files are public and exist.")
+        st.error(f"Load failed: {e}. Check GitHub files and connection.")
         st.stop()
         return None, None
 
 model, feature_names = load_model_and_features()
 
-# ——— PREPROCESSING (robust, handles missing columns/NaNs/bad data) ———
+# ——— PREPROCESSING (fully robust) ———
 def preprocess(df):
     df = df.copy()
     
-    # Safe TotalCharges
+    # TotalCharges
     if "TotalCharges" in df.columns:
         df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
         df["TotalCharges"].fillna(df["TotalCharges"].median() if not df["TotalCharges"].isna().all() else 0, inplace=True)
     else:
         df["TotalCharges"] = 0
     
-    # Feature engineering with fallbacks
-    if "tenure" in df.columns:
-        df['Tenure_Group'] = pd.cut(df['tenure'], bins=[0,12,24,48,60,999], labels=['0-1yr','1-2yr','2-4yr','4-5yr','5+yr'])
-    else:
-        df['Tenure_Group'] = '0-1yr'  # Default
-    
-    if "MonthlyCharges" in df.columns:
-        df['MonthlyCharges_Group'] = pd.qcut(df['MonthlyCharges'], q=4, labels=['Low','Medium','High','VeryHigh'], duplicates='drop')
-    else:
-        df['MonthlyCharges_Group'] = 'Low'
-    
+    # Features
+    df['Tenure_Group'] = pd.cut(df.get('tenure', 0), bins=[0,12,24,48,60,999], labels=['0-1yr','1-2yr','2-4yr','4-5yr','5+yr'])
+    df['MonthlyCharges_Group'] = pd.qcut(df.get('MonthlyCharges', [0]*len(df)), q=4, labels=['Low','Medium','High','VeryHigh'], duplicates='drop')
     df['TotalCharges_per_Month'] = df['TotalCharges'] / (df.get('tenure', 0) + 1)
-    
     df['Has_Internet'] = (df.get('InternetService', 'No') != 'No').astype(int)
     
     services = ['OnlineSecurity','OnlineBackup','DeviceProtection','TechSupport','StreamingTV','StreamingMovies']
@@ -82,7 +77,7 @@ def preprocess(df):
     X = X.reindex(columns=feature_names, fill_value=0)
     return X
 
-# ——— UI & PREDICTION ———
+# ——— UI ———
 st.sidebar.header("Upload Customer Data")
 uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
@@ -93,17 +88,17 @@ if uploaded is not None:
         probs = model.predict_proba(X)[:, 1]
         
         result = pd.DataFrame({
-            "customerID": data.get("customerID", pd.Series(range(len(data)))),  # Fallback IDs
+            "customerID": data.get("customerID", pd.Series(range(len(data)))),
             "Churn_Probability": np.round(probs, 3),
             "Prediction": np.where(probs >= 0.5, "Will Churn", "Will Stay")
         }).sort_values("Churn_Probability", ascending=False)
         
-        st.success(f"Successfully scored {len(result)} customers!")
+        st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
-        st.download_button("Download Predictions", result.to_csv(index=False), "churn_predictions.csv", "text/csv")
+        st.download_button("Download", result.to_csv(index=False), "predictions.csv")
     except Exception as e:
-        st.error(f"Error processing CSV: {e}. Ensure columns match training data (e.g., tenure, MonthlyCharges).")
+        st.error(f"Error: {e}. Check CSV format.")
 else:
-    st.info("Upload a CSV to get instant churn predictions!")
-    st.markdown("**Test file:** [Download sample](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
+    st.info("Upload CSV to start!")
+    st.markdown("**Test file:** [Download](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
     st.balloons()
