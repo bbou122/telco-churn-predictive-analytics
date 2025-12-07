@@ -114,7 +114,7 @@ if uploaded is not None:
         # Feature Importance (smaller)
         st.subheader("Top Churn Drivers")
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": model.feature_importances_}).sort_values("Importance", ascending=False).head(10)
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig, ax = plt.subplots(figsize=(4, 2))
         ax.barh(imp_df["Feature"], imp_df["Importance"], color='skyblue')
         ax.set_xlabel("Importance"); ax.invert_yaxis()
         st.pyplot(fig)
@@ -122,7 +122,7 @@ if uploaded is not None:
         # Pie Chart (smaller)
         st.subheader("Churn Distribution")
         counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(4, 4))
+        fig_pie, ax_pie = plt.subplots(figsize=(2, 2))
         ax_pie.pie(counts, labels=counts.index, autopct='%1.1f%%', colors=['lightgreen','salmon'])
         st.pyplot(fig_pie)
 
