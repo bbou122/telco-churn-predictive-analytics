@@ -1,4 +1,4 @@
-# streamlit_app.py – FINAL
+# streamlit_app.py – FINAL VERSION 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,24 +9,21 @@ import socket
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 
-# Use DejaVuSans (Unicode-safe) instead of Helvetica
-plt.rcParams['font.family'] = 'DejaVu Sans'
-
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
 st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
 
-# ——— HELP SECTION ———
+# Help section
 with st.expander("How to Use This App – Click to expand", expanded=False):
     st.markdown("""
-    1. **Upload** a CSV with the same columns as the sample  
-    2. Get **predictions + retention suggestions** instantly  
-    3. Explore **stats, charts, and high-risk segmentation**  
-    4. **Download** results as CSV or full PDF report  
+    1. Upload a CSV with the same columns as the sample  
+    2. Get predictions + retention suggestions instantly  
+    3. Explore stats, charts, and high-risk segmentation  
+    4. Download results as CSV or full PDF report  
     → Sample file: [Download telco_churn.csv](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)
     """)
 
-# ——— LOAD MODEL & FEATURES ———
+# Load model
 @st.cache_resource
 def load_model_and_features():
     model_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/model.json"
@@ -49,7 +46,7 @@ def load_model_and_features():
 
 model, feature_names = load_model_and_features()
 
-# ——— PREPROCESSING & SUGGESTIONS ———
+# Preprocessing
 def preprocess(df):
     df = df.copy()
     if "TotalCharges" in df.columns:
@@ -86,7 +83,7 @@ def get_suggestion(row):
     if row.get('Num_Services', 0) < 3: s.append("Upsell add-on services")
     return "; ".join(s) or "Monitor"
 
-# ——— PDF REPORT (now uses DejaVuSans → no font errors) ———
+# PDF Report
 def create_pdf(result, high_risk_count):
     pdf = FPDF()
     pdf.add_page()
@@ -100,13 +97,13 @@ def create_pdf(result, high_risk_count):
     pdf.cell(0, 10, "Top 10 At-Risk Customers & Suggestions", ln=1)
     pdf.set_font("Arial", size=10)
     for _, row in result.head(10).iterrows():
-        line = f"{row['customerID']}: {row['Churn_Probability']:.3f} → {row['Retention Suggestion']}"
+        line = f"{row['customerID']}: {row['Churn_Probability']:.3f} -> {row['Retention Suggestion']}"
         pdf.cell(0, 8, line, ln=1)
     pdf.output("churn_report.pdf")
     with open("churn_report.pdf", "rb") as f:
         return f.read()
 
-# ——— MAIN UI ———
+# MAIN UI
 st.sidebar.header("Upload Customer Data")
 uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
@@ -144,7 +141,25 @@ if uploaded is not None:
         ax_pie.pie(counts, labels=counts.index, autopct='%1.1f%%', colors=['lightgreen','salmon'])
         st.pyplot(fig_pie)
 
-        # PDF Report Button (now works!)
+        # SEGMENTATION BY CONTRACT (restored!)
+        st.subheader("High-Risk Customers by Contract Type")
+        high_risk = result[result["Churn_Probability"] >= 0.5].copy()
+        if not high_risk.empty:
+            high_risk = high_risk.merge(processed_data[['Contract']], left_index=True, right_index=True)
+            seg = high_risk.groupby('Contract').agg(
+                Count=('customerID', 'count'),
+                Avg_Probability=('Churn_Probability', 'mean')
+            ).round(3)
+            seg['Suggestion'] = seg.index.map({
+                'Month-to-month': 'Offer 1-year contract discount',
+                'One year': 'Renewal incentive',
+                'Two year': 'Reward loyalty'
+            }).fillna('Monitor')
+            st.dataframe(seg.style.background_gradient(cmap="Oranges", subset=["Avg_Probability"]))
+        else:
+            st.write("No high-risk customers in this batch.")
+
+        # PDF Download
         pdf_bytes = create_pdf(result, high_risk_count)
         st.download_button(
             label="Download Full PDF Report",
