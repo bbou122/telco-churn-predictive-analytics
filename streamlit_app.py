@@ -1,4 +1,4 @@
-# streamlit_app.py – FULL VERSION WITH SHAP (deploys on Streamlit Cloud, works locally on 3.10)
+# streamlit_app.py – REVISED FULL VERSION WITH SHAP (handles encoding errors in CSV)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -42,7 +42,7 @@ def load_model_and_features():
         
         return model, features
     except Exception as e:
-        st.error(f"Load failed: {e}. Check GitHub files.")
+        st.error(f"Load failed: {e}. Check GitHub files and connection.")
         st.stop()
         return None, None
 
@@ -84,7 +84,8 @@ uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
 if uploaded is not None:
     try:
-        data = pd.read_csv(uploaded)
+        # FIX: Handle encoding errors (e.g., latin1 for non-UTF8 CSVs)
+        data = pd.read_csv(uploaded, encoding='latin1')
         X = preprocess(data)
         probs = model.predict_proba(X)[:, 1]
         
@@ -98,18 +99,17 @@ if uploaded is not None:
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
         st.download_button("Download", result.to_csv(index=False), "predictions.csv")
         
-        # SHAP for highest-risk customer (as in your notebook)
+        # SHAP for highest-risk customer
         if len(result) > 0:
             top_index = result.index[0]
             st.subheader(f"SHAP Explanation for Highest-Risk Customer: {result.loc[top_index, 'customerID']}")
             explainer = shap.TreeExplainer(model)
             shap_values = explainer.shap_values(X.iloc[top_index:top_index+1])
-            shap.initjs()  # For force plot
             fig, ax = plt.subplots()
             shap.force_plot(explainer.expected_value, shap_values, X.iloc[top_index], matplotlib=True, show=False)
             st.pyplot(fig)
     except Exception as e:
-        st.error(f"Error: {e}. Check CSV format.")
+        st.error(f"Error: {e}. Try uploading a different CSV or check encoding.")
 else:
     st.info("Upload CSV to start!")
     st.markdown("**Test file:** [Download](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
