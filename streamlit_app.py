@@ -1,221 +1,179 @@
-# streamlit_app.py 
+# streamlit_app.py — FULL DEBUG VERSION
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import xgboost as xgb
 import urllib.request
-import tempfile
 import os
-import time
-from typing import List, Tuple
+import traceback
+import tempfile
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
-st.title("Telco Customer Churn Predictor")
-st.markdown("**Pre-trained XGBoost • Instant Predictions • Robust preprocessing & error handling**")
+st.title("Telco Customer Churn Predictor — DEBUG MODE")
+st.markdown("**This version prints full debug info to solve your model loading issue.**")
 
-# -------------------------
-# Utilities
-# -------------------------
-def download_to_temp(url: str, suffix: str = "") -> str:
-    """Download a URL to a temp file and return local path."""
-    tmp_dir = tempfile.gettempdir()
-    local_path = os.path.join(tmp_dir, f"streamlit_temp_{int(time.time()*1000)}{suffix}")
-    urllib.request.urlretrieve(url, local_path)
-    return local_path
-
-def safe_load_feature_list(feat_url: str) -> List[str]:
-    """Load features from CSV — tolerant to different column names."""
-    df = pd.read_csv(feat_url)
-    # If CSV has a column named "feature" use it, else take first column
-    if "feature" in df.columns:
-        return df["feature"].astype(str).tolist()
-    else:
-        return df.iloc[:, 0].astype(str).tolist()
-
-# -------------------------
-# Load model & features
-# -------------------------
+# ============================================================
+#   DEBUG LOADER — INSERTED RIGHT AFTER IMPORTS (CORRECT SPOT)
+# ============================================================
 @st.cache_resource(show_spinner=False)
-def load_model_and_features(model_url: str, feat_url: str) -> Tuple[xgb.XGBClassifier, List[str]]:
-    """Download model.json and feature list, load model and return (model, feature_names)."""
-    # Download model to a temp file (do not delete immediately)
-    local_model_path = download_to_temp(model_url, suffix=".json")
-    # Load model
-    model = xgb.XGBClassifier()
-    try:
-        model.load_model(local_model_path)
-    except Exception as e:
-        # Provide a helpful error message on failure
-        raise RuntimeError(f"Failed to load XGBoost model from '{model_url}': {e}")
-    # Load features
-    try:
-        feature_names = safe_load_feature_list(feat_url)
-    except Exception as e:
-        raise RuntimeError(f"Failed to load feature names from '{feat_url}': {e}")
-    # Return model and features (keep temp file — container cleans up)
-    return model, feature_names
+def debug_load_model_and_features(model_url: str, feat_url: str):
+    debug_info = {"model_url": model_url, "feat_url": feat_url}
 
-# Replace these URLs with your repo's raw URLs
+    try:
+        # -------------------
+        # Download model.json
+        # -------------------
+        tmp_model = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+        tmp_model.close()  # close temp file so urlretrieve can write to it
+        urllib.request.urlretrieve(model_url, tmp_model.name)
+
+        # Model file size + preview
+        debug_info["model_file_size_bytes"] = os.path.getsize(tmp_model.name)
+        with open(tmp_model.name, "rb") as f:
+            debug_info["model_first_bytes"] = f.read(300)
+
+        # -----------------------
+        # Download feature_names
+        # -----------------------
+        tmp_feat = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+        tmp_feat.close()
+        urllib.request.urlretrieve(feat_url, tmp_feat.name)
+
+        debug_info["feature_file_size_bytes"] = os.path.getsize(tmp_feat.name)
+
+        # Load feature file
+        try:
+            feat_df = pd.read_csv(tmp_feat.name)
+            debug_info["feature_csv_head"] = feat_df.head(5).to_dict()
+
+            if "feature" in feat_df.columns:
+                feature_list = feat_df["feature"].astype(str).tolist()
+            else:
+                # Fallback: assume first column is features
+                feature_list = feat_df.iloc[:, 0].astype(str).tolist()
+
+            debug_info["num_features_loaded"] = len(feature_list)
+
+        except Exception:
+            debug_info["feature_load_error"] = traceback.format_exc()
+            feature_list = []
+
+        # -----------------------
+        # Try loading the model
+        # -----------------------
+        load_attempts = {}
+        model_obj = None
+
+        # Attempt 1 – XGBClassifier
+        try:
+            m1 = xgb.XGBClassifier()
+            m1.load_model(tmp_model.name)
+            model_obj = m1
+            debug_info["model_loaded_via"] = "XGBClassifier"
+        except Exception:
+            load_attempts["XGBClassifier"] = traceback.format_exc()
+
+        # Attempt 2 – Booster
+        if model_obj is None:
+            try:
+                booster = xgb.Booster()
+                booster.load_model(tmp_model.name)
+                model_obj = booster
+                debug_info["model_loaded_via"] = "Booster"
+            except Exception:
+                load_attempts["Booster"] = traceback.format_exc()
+
+        debug_info["load_attempt_errors"] = load_attempts
+
+        return model_obj, feature_list, debug_info
+
+    except Exception:
+        debug_info["fatal_error"] = traceback.format_exc()
+        return None, [], debug_info
+
+
+# ============================================================
+#   LOAD MODEL + FEATURES (WITH DEBUG)
+# ============================================================
 MODEL_URL = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/model.json"
 FEAT_URL  = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/feature_names.csv"
 
-# Try load and show friendly error if it fails
-try:
-    model, feature_names = load_model_and_features(MODEL_URL, FEAT_URL)
-except Exception as e:
-    st.error("Model or feature file failed to load.")
-    st.exception(e)
+model, feature_names, debug_info = debug_load_model_and_features(MODEL_URL, FEAT_URL)
+
+# Display debug info on screen
+st.subheader("🔍 Debug Information")
+st.json(debug_info)
+
+# If model failed, stop here
+if model is None:
+    st.error("❌ Model failed to load. See debug information above.")
     st.stop()
 
-# -------------------------
-# Preprocessing
-# -------------------------
-def safe_qcut(series: pd.Series, q: int, labels: List[str]) -> pd.Series:
-    """Robust qcut: if qcut fails fallback to quantile-based binning or simple cut."""
-    try:
-        return pd.qcut(series, q=q, labels=labels, duplicates="drop")
-    except Exception:
-        # If qcut fails (too few unique values), use cut with quantiles or constant label
-        unique_vals = series.dropna().unique()
-        if len(unique_vals) >= 2:
-            try:
-                qs = np.linspace(0, 1, min(q, len(unique_vals)))
-                bins = series.quantile(qs).unique()
-                # if bins length < 2 fallback
-                if len(bins) >= 2:
-                    # create labels matching number of bins-1 if duplicates were dropped
-                    n_bins = len(bins) - 1
-                    alt_labels = labels[:n_bins] if len(labels) >= n_bins else [f"bin{i}" for i in range(n_bins)]
-                    return pd.cut(series, bins=bins, labels=alt_labels, include_lowest=True)
-            except Exception:
-                pass
-        # final fallback: single label
-        return pd.Series([labels[len(labels)//2]] * len(series), index=series.index)
-
-def preprocess(df: pd.DataFrame, feature_names: List[str]) -> pd.DataFrame:
-    """
-    Preprocess dataframe to match training features.
-    - Safe handling of missing columns
-    - Stable dtypes
-    - One-hot -> reindex to feature_names with fill_value=0
-    """
+# ============================================================
+#   PREPROCESSING FUNCTION
+# ============================================================
+def preprocess(df):
     df = df.copy()
 
-    # Ensure numeric columns exist and have sensible defaults
-    # tenure and MonthlyCharges should exist for feature engineering. If missing, create reasonable defaults.
-    if "tenure" not in df.columns:
-        df["tenure"] = 0
-    if "MonthlyCharges" not in df.columns:
-        df["MonthlyCharges"] = 0.0
-    # TotalCharges safe convert
     if "TotalCharges" in df.columns:
         df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-        # if all NaN fallback to 0
-        if df["TotalCharges"].notna().any():
-            df["TotalCharges"].fillna(df["TotalCharges"].median(), inplace=True)
-        else:
-            df["TotalCharges"].fillna(0.0, inplace=True)
+        df["TotalCharges"].fillna(df["TotalCharges"].median() if df["TotalCharges"].notna().any() else 0, inplace=True)
     else:
-        df["TotalCharges"] = 0.0
+        df["TotalCharges"] = 0
 
-    # Tenure group (use df['tenure'].max() so bins adapt to uploaded data)
-    max_tenure = int(max( df["tenure"].max() if pd.notna(df["tenure"].max()) else 0, 1 ))
-    df["Tenure_Group"] = pd.cut(
-        df["tenure"],
-        bins=[0,12,24,48,60, max_tenure],
-        labels=['0-1yr','1-2yr','2-4yr','4-5yr','5+yr'],
-        include_lowest=True
-    )
+    df['Tenure_Group'] = pd.cut(df['tenure'], bins=[0,12,24,48,60,999], labels=['0-1yr','1-2yr','2-4yr','4-5yr','5+yr'])
+    df['MonthlyCharges_Group'] = pd.qcut(df['MonthlyCharges'], q=4, labels=['Low','Medium','High','VeryHigh'], duplicates='drop')
+    df['TotalCharges_per_Month'] = df['TotalCharges'] / (df['tenure'] + 1)
+    df['Has_Internet'] = (df['InternetService'] != 'No').astype(int)
 
-    # MonthlyCharges group (robust)
-    df["MonthlyCharges_Group"] = safe_qcut(df["MonthlyCharges"].astype(float), q=4, labels=['Low','Medium','High','VeryHigh'])
-
-    # Ratio
-    df["TotalCharges_per_Month"] = df["TotalCharges"] / (df["tenure"].replace(0, np.nan) + 1)
-    df["TotalCharges_per_Month"].fillna(0.0, inplace=True)
-
-    # Internet flag
-    df["InternetService"] = df.get("InternetService", "").fillna("")
-    df["Has_Internet"] = (df["InternetService"].astype(str).str.lower() != "no").astype(int)
-
-    # Services: make sure columns exist and are strings
     services = ['OnlineSecurity','OnlineBackup','DeviceProtection','TechSupport','StreamingTV','StreamingMovies']
     for col in services:
         if col not in df.columns:
-            df[col] = "No"
-        df[col] = df[col].astype(str).fillna("No")
+            df[col] = 'No'
 
-    # Count Yes services robustly (case-insensitive)
-    df['Num_Services'] = df[services].apply(lambda col: col.str.contains("yes", case=False, na=False)).sum(axis=1).astype(int)
+    df['Num_Services'] = df[services].apply(lambda x: x.str.contains("Yes", case=False, na=False)).sum(axis=1)
+    df['No_TechSupport'] = (df['TechSupport'] == 'No').astype(int)
+    df['Fiber_Optic'] = (df['InternetService'] == 'Fiber optic').astype(int)
+    df['Month_to_Month'] = (df['Contract'] == 'Month-to-month').astype(int)
+    df['Electronic_Check'] = (df['PaymentMethod'] == 'Electronic check').astype(int)
 
-    # Other engineered flags (use .get to avoid KeyError)
-    df['No_TechSupport'] = (df.get('TechSupport', '').astype(str).str.lower() == 'no').astype(int)
-    df['Fiber_Optic'] = (df.get('InternetService', '').astype(str).str.lower() == 'fiber optic').astype(int) | (df.get('InternetService', '').astype(str).str.lower() == 'fiber').astype(int)
-    df['Month_to_Month'] = (df.get('Contract', '').astype(str).str.lower() == 'month-to-month').astype(int)
-    df['Electronic_Check'] = (df.get('PaymentMethod', '').astype(str).str.lower() == 'electronic check').astype(int)
-
-    # One-hot encode and reindex to training features
     X = pd.get_dummies(df.drop(columns=['customerID'], errors='ignore'), drop_first=True)
-    # If any feature names in feature_names are missing in X, they'll be filled with 0
     X = X.reindex(columns=feature_names, fill_value=0)
 
     return X
 
-# -------------------------
-# UI: upload and scoring
-# -------------------------
-st.sidebar.header("Upload customer CSV")
-uploaded = st.sidebar.file_uploader("Choose a CSV file with same columns used during training", type="csv")
 
-if uploaded is not None:
+# ============================================================
+#   UI + PREDICTION
+# ============================================================
+st.sidebar.header("Upload Customer CSV")
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+
+if uploaded_file is not None:
     try:
-        data = pd.read_csv(uploaded)
+        df = pd.read_csv(uploaded_file)
+        X = preprocess(df)
+
+        # If Booster object, use predict() instead of predict_proba()
+        if isinstance(model, xgb.Booster):
+            dmatrix = xgb.DMatrix(X)
+            probs = model.predict(dmatrix)
+        else:
+            probs = model.predict_proba(X)[:, 1]
+
+        output = pd.DataFrame({
+            "customerID": df.get("customerID", range(len(df))),
+            "Churn_Probability": np.round(probs, 3),
+            "Prediction": np.where(probs >= 0.5, "Will Churn", "Will Stay")
+        }).sort_values("Churn_Probability", ascending=False)
+
+        st.success("Predictions generated!")
+        st.dataframe(output)
+        st.download_button("Download Predictions", output.to_csv(index=False), "predictions.csv")
+
     except Exception as e:
-        st.error("Could not read uploaded CSV. Ensure it's a valid CSV file.")
-        st.exception(e)
-        st.stop()
-
-    # Basic sanity check
-    if data.shape[0] == 0:
-        st.warning("Uploaded file contains no rows.")
-        st.stop()
-
-    # Preprocess
-    try:
-        X = preprocess(data, feature_names)
-    except Exception as e:
-        st.error("Preprocessing failed. Check that required columns exist (e.g., tenure, MonthlyCharges).")
-        st.exception(e)
-        st.stop()
-
-    # Predict - guard for shape mismatch
-    try:
-        probs = model.predict_proba(X)[:, 1]
-    except Exception as e:
-        st.error("Prediction failed — likely a feature mismatch between model and uploaded data.")
-        # Helpful debug info
-        st.write("Model expects these features (first 40 shown):")
-        st.write(feature_names[:40])
-        st.write("Your prepared dataframe has these columns (first 40 shown):")
-        st.write(list(X.columns[:40]))
-        st.exception(e)
-        st.stop()
-
-    # Build result table
-    ids = data.get("customerID", pd.Series(range(len(data))))
-    result = pd.DataFrame({
-        "customerID": ids,
-        "Churn_Probability": np.round(probs, 3),
-        "Prediction": np.where(probs >= 0.5, "Will Churn", "Will Stay")
-    }).sort_values("Churn_Probability", ascending=False)
-
-    st.success(f"Successfully scored {len(result)} customers!")
-    st.dataframe(result.style.background_gradient(subset=["Churn_Probability"]))
-
-    csv_bytes = result.to_csv(index=False).encode("utf-8")
-    st.download_button("Download predictions (CSV)", data=csv_bytes, file_name="churn_predictions.csv", mime="text/csv")
+        st.error(f"Prediction Error: {e}")
 
 else:
-    st.info("Upload a CSV to receive instant churn predictions.")
-    st.markdown("**Sample/test file:** [Download sample here](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
-    st.balloons()
+    st.info("Upload a CSV file to generate predictions.")
