@@ -1,4 +1,4 @@
-# streamlit_app.py – REVISED FINAL VERSION (no sklearn, works on Python 3.10 or 3.13)
+# streamlit_app.py – FULL VERSION WITH SHAP (deploys on Streamlit Cloud, works locally on 3.10)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,10 +6,12 @@ import xgboost as xgb
 import urllib.request
 import os
 import socket  # For timeout
+import shap
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
-st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
+st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions with SHAP Explanations**")
 
 # ——— LOAD MODEL & FEATURES ———
 @st.cache_resource
@@ -18,7 +20,7 @@ def load_model_and_features():
     feat_url  = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/feature_names.csv"
     
     try:
-        socket.setdefaulttimeout(30)  # Prevent network hangs
+        socket.setdefaulttimeout(30)
         
         local_model = "temp_model.json"
         urllib.request.urlretrieve(model_url, local_model)
@@ -31,16 +33,16 @@ def load_model_and_features():
         if os.path.exists(local_model):
             os.remove(local_model)
         
-        # Quick check: Confirm engineered features are in model (from your notebook)
+        # Confirm engineered features (from notebook)
         engineered = ['Month_to_Month', 'Fiber_Optic', 'No_TechSupport', 'Num_Services']
         if all(f in features for f in engineered):
             st.write("Model loaded — engineered features confirmed!")
         else:
-            st.warning("Engineered features missing — re-train and upload model.json")
+            st.warning("Engineered features missing — re-train model.json")
         
         return model, features
     except Exception as e:
-        st.error(f"Load failed: {e}. Check files on GitHub.")
+        st.error(f"Load failed: {e}. Check GitHub files.")
         st.stop()
         return None, None
 
@@ -76,7 +78,7 @@ def preprocess(df):
     X = X.reindex(columns=feature_names, fill_value=0)
     return X
 
-# ——— UI ———
+# ——— UI & PREDICTION ———
 st.sidebar.header("Upload Customer Data")
 uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
@@ -95,6 +97,17 @@ if uploaded is not None:
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
         st.download_button("Download", result.to_csv(index=False), "predictions.csv")
+        
+        # SHAP for highest-risk customer (as in your notebook)
+        if len(result) > 0:
+            top_index = result.index[0]
+            st.subheader(f"SHAP Explanation for Highest-Risk Customer: {result.loc[top_index, 'customerID']}")
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X.iloc[top_index:top_index+1])
+            shap.initjs()  # For force plot
+            fig, ax = plt.subplots()
+            shap.force_plot(explainer.expected_value, shap_values, X.iloc[top_index], matplotlib=True, show=False)
+            st.pyplot(fig)
     except Exception as e:
         st.error(f"Error: {e}. Check CSV format.")
 else:
