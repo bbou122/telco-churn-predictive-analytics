@@ -5,12 +5,24 @@ import numpy as np
 import xgboost as xgb
 import urllib.request
 import os
-import socket  # For timeout
+import socket
 import matplotlib.pyplot as plt
+from fpdf import FPDF   # ⬅ NEW (for PDF export)
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
 st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
+
+# 📌 HELP SECTION — Added at the very top
+with st.expander("ℹ️ **How to Use This App**"):
+    st.markdown("""
+    1. Upload a CSV with columns like the sample (customerID, tenure, MonthlyCharges, Contract, etc.).
+    2. Get predictions, suggestions, and insights.
+    3. Download results or explore charts.
+    
+    **Sample CSV:**  
+    [Download here](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)
+    """)
 
 # ——— LOAD MODEL & FEATURES ———
 @st.cache_resource
@@ -20,7 +32,6 @@ def load_model_and_features():
     
     try:
         socket.setdefaulttimeout(30)
-        
         local_model = "temp_model.json"
         urllib.request.urlretrieve(model_url, local_model)
         
@@ -32,7 +43,6 @@ def load_model_and_features():
         if os.path.exists(local_model):
             os.remove(local_model)
         
-        # Confirm engineered features
         engineered = ['Month_to_Month', 'Fiber_Optic', 'No_TechSupport', 'Num_Services']
         if all(f in features for f in engineered):
             st.write("Model loaded — engineered features confirmed!")
@@ -75,9 +85,9 @@ def preprocess(df):
     
     X = pd.get_dummies(df.drop(columns=['customerID'], errors='ignore'), drop_first=True)
     X = X.reindex(columns=feature_names, fill_value=0)
-    return X, df  # Return original df for segmentation
+    return X, df
 
-# ——— RETENTION SUGGESTIONS (rule-based on key features) ———
+# ——— RETENTION RULES ———
 def get_suggestion(row):
     suggestions = []
     if row.get('Month_to_Month', 0) == 1:
@@ -90,78 +100,93 @@ def get_suggestion(row):
         suggestions.append("Upsell add-on services")
     return "; ".join(suggestions) or "Monitor for retention"
 
-# ——— UI & PREDICTION ———
+# ——— PDF GENERATOR ———
+def generate_pdf(result):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(200, 10, txt="Churn Predictions Report", ln=1, align='C')
+
+    for index, row in result.iterrows():
+        line = f"{row['customerID']}: {row['Prediction']} ({row['Churn_Probability']})"
+        pdf.cell(0, 10, line, ln=1)
+        pdf.multi_cell(0, 10, f"Suggestion: {row['Retention Suggestion']}")
+
+    pdf.output("report.pdf")
+
+    with open("report.pdf", "rb") as f:
+        return f.read()
+
+# ——— UI ———
 st.sidebar.header("Upload Customer Data")
 uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
-if uploaded is not None:
+if uploaded:
     try:
-        data = pd.read_csv(uploaded, encoding='latin1')  # Handles encoding issues
-        X, processed_data = preprocess(data)
+        data = pd.read_csv(uploaded, encoding='latin1')
+        X, processed = preprocess(data)
         probs = model.predict_proba(X)[:, 1]
-        
+
         result = pd.DataFrame({
             "customerID": data.get("customerID", pd.Series(range(len(data)))),
             "Churn_Probability": np.round(probs, 3),
             "Prediction": np.where(probs >= 0.5, "Will Churn", "Will Stay")
         }).sort_values("Churn_Probability", ascending=False)
-        
-        # ADD: Retention Suggestions column
-        processed_data = processed_data.reset_index(drop=True)  # Align indices
+
+        processed = processed.reset_index(drop=True)
         result = result.reset_index(drop=True)
-        result['Retention Suggestion'] = processed_data.apply(get_suggestion, axis=1)
-        
+        result['Retention Suggestion'] = processed.apply(get_suggestion, axis=1)
+
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
-        st.download_button("Download Predictions", result.to_csv(index=False), "churn_predictions.csv", "text/csv")
-        
-        # ADD 3: Summary Stats Section
+
+        # CSV export
+        st.download_button(
+            "Download Predictions (CSV)", 
+            result.to_csv(index=False), 
+            "churn_predictions.csv",
+            "text/csv"
+        )
+
+        # PDF export — NEW!
+        pdf_data = generate_pdf(result)
+        st.download_button(
+            "📄 Download Full Report as PDF",
+            pdf_data,
+            "churn_report.pdf",
+            "application/pdf"
+        )
+
+        # Summary Stats
         st.subheader("Summary Stats")
         avg_prob = np.mean(result["Churn_Probability"])
         high_risk_count = len(result[result["Churn_Probability"] >= 0.5])
-        high_risk_pct = (high_risk_count / len(result) * 100) if len(result) > 0 else 0
-        top_risk_segment = result.iloc[0]["Prediction"] if len(result) > 0 else "N/A"
+        high_risk_pct = (high_risk_count / len(result) * 100)
+
         st.markdown(f"""
-        - Average Churn Probability: **{avg_prob:.3f}**
-        - High-Risk Customers (Probability ≥ 0.5): **{high_risk_count} ({high_risk_pct:.1f}%)**
-        - Top Risk Prediction: **{top_risk_segment}**
+        - **Average Churn Probability:** {avg_prob:.3f}  
+        - **High-Risk (≥ 0.5):** {high_risk_count} customers ({high_risk_pct:.1f}%)  
         """)
-        
-        # ADD 1: Feature Importance Chart (smaller size)
-        st.subheader("Top Churn Drivers (Feature Importance)")
+
+        # Feature Importance
+        st.subheader("Top Churn Drivers")
         importances = model.feature_importances_
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": importances}).sort_values("Importance", ascending=False).head(10)
-        fig, ax = plt.subplots(figsize=(8, 4))  # Smaller size
-        ax.barh(imp_df["Feature"], imp_df["Importance"], color='skyblue')
-        ax.set_xlabel("Importance")
-        ax.set_title("Top 10 Features Driving Churn")
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.barh(imp_df["Feature"], imp_df["Importance"])
         ax.invert_yaxis()
+        ax.set_title("Top 10 Features Driving Churn")
         st.pyplot(fig)
-        
-        # ADD 2: Churn Distribution Pie Chart (smaller size)
+
+        # Pie Chart
         st.subheader("Churn Distribution")
         churn_counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(5, 5))  # Smaller size
-        ax_pie.pie(churn_counts, labels=churn_counts.index, autopct='%1.1f%%', colors=['lightgreen', 'salmon'])
-        ax_pie.set_title("Percentage Will Churn vs Will Stay")
-        st.pyplot(fig_pie)
-        
-        # ADD: Segmentation of At Risk Customers
-        st.subheader("Segmentation of High-Risk Customers (Probability ≥ 0.5)")
-        high_risk = result[result["Churn_Probability"] >= 0.5].copy()
-        if not high_risk.empty:
-            high_risk['Contract'] = processed_data['Contract']
-            segment = high_risk.groupby('Contract').agg({
-                'Churn_Probability': 'mean',
-                'customerID': 'count'
-            }).rename(columns={'customerID': 'Count', 'Churn_Probability': 'Avg Probability'})
-            segment['Suggestion'] = segment.index.map(lambda x: "Focus on loyalty programs for month-to-month" if x == 'Month-to-month' else "Strengthen renewal offers")
-            st.dataframe(segment.style.background_gradient(cmap="Oranges", subset=["Avg Probability"]))
-        else:
-            st.write("No high-risk customers in this batch.")
+        fig2, ax2 = plt.subplots(figsize=(5, 5))
+        ax2.pie(churn_counts, labels=churn_counts.index, autopct='%1.1f%%')
+        st.pyplot(fig2)
+
     except Exception as e:
-        st.error(f"Error: {e}. Check CSV format or encoding.")
+        st.error(f"Error: {e}")
 else:
-    st.info("Upload CSV to start!")
-    st.markdown("**Test file:** [Download](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
-    st.balloons()
+    st.info("Upload a CSV to begin!")
