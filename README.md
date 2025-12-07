@@ -1,22 +1,31 @@
 # Telco Customer Churn Predictive Analytics  
-**Live Web App • XGBoost 0.86 AUC • Full SHAP Explainability**
+**Live Web App • XGBoost • 0.84–0.86 AUC • Actionable Retention Recommendations**
 
-🔗 **LIVE APP** → https://share.streamlit.io/bbou122/telco-churn-predictive-analytics/main  
+Live App → https://telco-churn-predictive-analytics-fxzetpmqbpvhvd7twxoyuj.streamlit.app/
 
-Upload any customer CSV and get instant churn predictions + automated retention recommendations.
+Upload any customer CSV → get **instant churn predictions + personalized retention suggestions** for every customer, plus one-click PDF/CSV export.
 
-## What I Built
-- End-to-end analytics pipeline (raw data → insights → production model)  
-- 12+ smart features → XGBoost model (0.85 AUC)  
-- SHAP values for every prediction  
-- Deployed as a real web app (zero installation for stakeholders)
+## What I Built (End-to-End Production-Ready Analytics)
 
-## Live Results coming.
-![App](images/app.png)
-![SHAP](images/shap.png)
-![EDA](images/eda.png)
+| Component                      | What It Does                                                                 |
+|-------------------------------|-------------------------------------------------------------------------------|
+| Data Cleaning & EDA           | Robust handling of real-world messiness (missing values, encoding issues)    |
+| Feature Engineering           | 12+ high-impact features (tenure groups, service count, risk flags)          |
+| Modeling                      | XGBoost trained on full dataset → **0.84–0.86 AUC**                           |
+| Business Logic                | Rule-based retention recommendations per customer (contract discounts, upselling, etc.) |
+| Interactive Dashboard         | Streamlit app with predictions table, summary stats, visualizations, and **high-risk segmentation by contract** |
+| One-Click Reporting           | Download full results as CSV or **professional PDF report**                  |
+| Deployment                    | Fully deployed on Streamlit Cloud — zero setup for stakeholders              |
+
+## Key Business Insights (Directly from the Model)
+
+- **Month-to-month contracts** are the #1 churn driver (often >40% risk) → target with loyalty discounts
+- **Fiber optic customers** churn 2× more → service quality issue
+- Customers without **TechSupport** or with **few add-ons** are high risk → perfect upsell targets
+- **Electronic check** payment = strong red flag
 
 ## Tech Stack
-Python • Pandas • XGBoost • SHAP • Streamlit • GitHub
 
-Full notebooks + code in this repo.
+Python • Pandas • XGBoost • Matplotlib • Streamlit • GitHub Actions (implied via deployment)
+
+## Project Structure
