@@ -1,4 +1,4 @@
-# streamlit_app.py – REVISED FOR FAST DEPLOY (hang-free on free tier)
+# streamlit_app.py – REVISED FINAL VERSION (no sklearn, works on Python 3.10 or 3.13)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,51 +11,51 @@ st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
 st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
 
-# ——— LOAD MODEL & FEATURES (with timeout + error handling) ———
+# ——— LOAD MODEL & FEATURES ———
 @st.cache_resource
 def load_model_and_features():
     model_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/model.json"
     feat_url  = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/feature_names.csv"
     
     try:
-        # Set timeout for downloads (prevents hangs on slow connections)
-        socket.setdefaulttimeout(30)
+        socket.setdefaulttimeout(30)  # Prevent network hangs
         
-        # Download model
         local_model = "temp_model.json"
         urllib.request.urlretrieve(model_url, local_model)
         
-        # Load model
         model = xgb.XGBClassifier()
         model.load_model(local_model)
         
-        # Load features
         features = pd.read_csv(feat_url)["feature"].tolist()
         
-        # Cleanup
         if os.path.exists(local_model):
             os.remove(local_model)
         
+        # Quick check: Confirm engineered features are in model (from your notebook)
+        engineered = ['Month_to_Month', 'Fiber_Optic', 'No_TechSupport', 'Num_Services']
+        if all(f in features for f in engineered):
+            st.write("Model loaded — engineered features confirmed!")
+        else:
+            st.warning("Engineered features missing — re-train and upload model.json")
+        
         return model, features
     except Exception as e:
-        st.error(f"Load failed: {e}. Check GitHub files and connection.")
+        st.error(f"Load failed: {e}. Check files on GitHub.")
         st.stop()
         return None, None
 
 model, feature_names = load_model_and_features()
 
-# ——— PREPROCESSING (fully robust) ———
+# ——— PREPROCESSING ———
 def preprocess(df):
     df = df.copy()
     
-    # TotalCharges
     if "TotalCharges" in df.columns:
         df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
         df["TotalCharges"].fillna(df["TotalCharges"].median() if not df["TotalCharges"].isna().all() else 0, inplace=True)
     else:
         df["TotalCharges"] = 0
     
-    # Features
     df['Tenure_Group'] = pd.cut(df.get('tenure', 0), bins=[0,12,24,48,60,999], labels=['0-1yr','1-2yr','2-4yr','4-5yr','5+yr'])
     df['MonthlyCharges_Group'] = pd.qcut(df.get('MonthlyCharges', [0]*len(df)), q=4, labels=['Low','Medium','High','VeryHigh'], duplicates='drop')
     df['TotalCharges_per_Month'] = df['TotalCharges'] / (df.get('tenure', 0) + 1)
@@ -72,7 +72,6 @@ def preprocess(df):
     df['Month_to_Month'] = (df.get('Contract', 'Month-to-month') == 'Month-to-month').astype(int)
     df['Electronic_Check'] = (df.get('PaymentMethod', 'Electronic check') == 'Electronic check').astype(int)
     
-    # One-hot + align
     X = pd.get_dummies(df.drop(columns=['customerID'], errors='ignore'), drop_first=True)
     X = X.reindex(columns=feature_names, fill_value=0)
     return X
