@@ -1,4 +1,4 @@
-# streamlit_app.py – REVISED VERSION WITH FEATURE IMPORTANCE, PIE CHART, AND SUMMARY STATS (no SHAP)
+# streamlit_app.py 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -75,7 +75,20 @@ def preprocess(df):
     
     X = pd.get_dummies(df.drop(columns=['customerID'], errors='ignore'), drop_first=True)
     X = X.reindex(columns=feature_names, fill_value=0)
-    return X
+    return X, df  # Return original df for segmentation
+
+# ——— RETENTION SUGGESTIONS (rule-based on key features) ———
+def get_suggestion(row):
+    suggestions = []
+    if row.get('Month_to_Month', 0) == 1:
+        suggestions.append("Offer long-term contract discount")
+    if row.get('Fiber_Optic', 0) == 1:
+        suggestions.append("Improve fiber service quality")
+    if row.get('No_TechSupport', 0) == 1:
+        suggestions.append("Bundle tech support package")
+    if row.get('Num_Services', 0) < 3:
+        suggestions.append("Upsell add-on services")
+    return "; ".join(suggestions) or "Monitor for retention"
 
 # ——— UI & PREDICTION ———
 st.sidebar.header("Upload Customer Data")
@@ -84,7 +97,7 @@ uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 if uploaded is not None:
     try:
         data = pd.read_csv(uploaded, encoding='latin1')  # Handles encoding issues
-        X = preprocess(data)
+        X, processed_data = preprocess(data)
         probs = model.predict_proba(X)[:, 1]
         
         result = pd.DataFrame({
@@ -92,6 +105,11 @@ if uploaded is not None:
             "Churn_Probability": np.round(probs, 3),
             "Prediction": np.where(probs >= 0.5, "Will Churn", "Will Stay")
         }).sort_values("Churn_Probability", ascending=False)
+        
+        # ADD: Retention Suggestions column
+        processed_data = processed_data.reset_index(drop=True)  # Align indices
+        result = result.reset_index(drop=True)
+        result['Retention Suggestion'] = processed_data.apply(get_suggestion, axis=1)
         
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
@@ -109,24 +127,38 @@ if uploaded is not None:
         - Top Risk Prediction: **{top_risk_segment}**
         """)
         
-        # ADD 1: Feature Importance Chart
+        # ADD 1: Feature Importance Chart (smaller size)
         st.subheader("Top Churn Drivers (Feature Importance)")
         importances = model.feature_importances_
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": importances}).sort_values("Importance", ascending=False).head(10)
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(8, 4))  # Smaller size
         ax.barh(imp_df["Feature"], imp_df["Importance"], color='skyblue')
         ax.set_xlabel("Importance")
         ax.set_title("Top 10 Features Driving Churn")
         ax.invert_yaxis()
         st.pyplot(fig)
         
-        # ADD 2: Churn Distribution Pie Chart
+        # ADD 2: Churn Distribution Pie Chart (smaller size)
         st.subheader("Churn Distribution")
         churn_counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(6, 6))
+        fig_pie, ax_pie = plt.subplots(figsize=(5, 5))  # Smaller size
         ax_pie.pie(churn_counts, labels=churn_counts.index, autopct='%1.1f%%', colors=['lightgreen', 'salmon'])
         ax_pie.set_title("Percentage Will Churn vs Will Stay")
         st.pyplot(fig_pie)
+        
+        # ADD: Segmentation of At Risk Customers
+        st.subheader("Segmentation of High-Risk Customers (Probability ≥ 0.5)")
+        high_risk = result[result["Churn_Probability"] >= 0.5].copy()
+        if not high_risk.empty:
+            high_risk['Contract'] = processed_data['Contract']
+            segment = high_risk.groupby('Contract').agg({
+                'Churn_Probability': 'mean',
+                'customerID': 'count'
+            }).rename(columns={'customerID': 'Count', 'Churn_Probability': 'Avg Probability'})
+            segment['Suggestion'] = segment.index.map(lambda x: "Focus on loyalty programs for month-to-month" if x == 'Month-to-month' else "Strengthen renewal offers")
+            st.dataframe(segment.style.background_gradient(cmap="Oranges", subset=["Avg Probability"]))
+        else:
+            st.write("No high-risk customers in this batch.")
     except Exception as e:
         st.error(f"Error: {e}. Check CSV format or encoding.")
 else:
