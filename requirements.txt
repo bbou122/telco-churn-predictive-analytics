@@ -5,3 +5,4 @@ xgboost==2.1.1
 scikit-learn==1.5.1
 shap==0.44.0
 matplotlib==3.8.4
+fpdf2==2.7.7
