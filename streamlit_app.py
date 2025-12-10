@@ -1,4 +1,4 @@
-# streamlit_app.py – FINAL 
+# streamlit_app.py – FINAL, ERROR-FREE VERSION (deploy & forget)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -13,17 +13,17 @@ st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
 st.markdown("**Pre-trained XGBoost • 0.84–0.86 AUC • Actionable Retention Insights**")
 
-# 3. Direct CSV download link (no raw GitHub view)
-sample_csv_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv"
-st.sidebar.markdown(f"**Test with sample data:** [Download telco_churn.csv]({sample_csv_url})")
+# Direct sample CSV download
+sample_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv"
+st.sidebar.markdown(f"**Test with sample data:** [Download telco_churn.csv]({sample_url})")
 
 # Help section
 with st.expander("How to Use This App", expanded=False):
     st.markdown("""
     1. Upload a CSV (or use the sample above)  
-    2. Get **instant predictions + personalized suggestions**  
-    3. View **summary stats, top drivers, and high-risk segmentation**  
-    4. Export results as CSV or **full PDF report** (top 100 customers)
+    2. Get instant predictions + personalized suggestions  
+    3. View stats, top drivers, and high-risk segmentation  
+    4. Export as CSV or full PDF report (top 100 customers)
     """)
 
 # Load model
@@ -48,7 +48,7 @@ def load_model_and_features():
 
 model, feature_names = load_model_and_features()
 
-# Preprocessing + suggestions
+# Preprocessing
 def preprocess(df):
     df = df.copy()
     if "TotalCharges" in df.columns:
@@ -85,7 +85,7 @@ def get_suggestion(row):
     if row.get('Num_Services', 0) < 3: s.append("Upsell add-ons")
     return "; ".join(s) or "Monitor closely"
 
-# PDF Report – now top 100 customers
+# PDF Report – now uses plain ASCII "->" instead of arrow
 def create_pdf(result, high_risk_count):
     pdf = FPDF()
     pdf.add_page()
@@ -99,7 +99,7 @@ def create_pdf(result, high_risk_count):
     pdf.cell(0, 10, "Top 100 Highest-Risk Customers", ln=1)
     pdf.set_font("Arial", size=9)
     for _, row in result.head(100).iterrows():
-        line = f"{row['customerID']}: {row['Churn_Probability']:.3f} → {row['Retention Suggestion']}"
+        line = f"{row['customerID']}: {row['Churn_Probability']:.3f} -> {row['Retention Suggestion']}"
         pdf.cell(0, 6, line, ln=1)
     pdf.output("churn_report.pdf")
     with open("churn_report.pdf", "rb") as f:
@@ -125,29 +125,24 @@ if uploaded is not None:
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
 
-        # 5. Summary stats – now with your exact message
+        # Key insight
         st.subheader("Key Insight")
-        st.info("**Month-to-month contract customers are by far the most likely to churn** — this group consistently shows 35–45% churn risk in the data.")
+        st.info("**Month-to-month contract customers are by far the most likely to churn** — this group consistently shows 35–45% churn risk.")
 
-        # Feature importance (smaller)
+        # Feature importance
         st.subheader("Top Churn Drivers")
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": model.feature_importances_}).sort_values("Importance", ascending=False).head(10)
-        fig, ax = plt.subplots(figsize=(8, 3.5))
+        fig, ax = plt.subplots(figsize=(8, 3.5)
         ax.barh(imp_df["Feature"], imp_df["Importance"], color='#FF6B6B')
         ax.set_xlabel("Importance"); ax.invert_yaxis()
         st.pyplot(fig)
 
-                # 1. Tiny & beautiful pie chart (now fixed!)
+        # Tiny pie chart
         st.subheader("Churn Risk Distribution")
         counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(4, 4))          # ← fixed: 4, 4 (not 3.schema)
-        wedges, texts, autotexts = ax_pie.pie(
-            counts,
-            labels=counts.index,
-            autopct='%1.0f%%',
-            colors=['#95E1D3', '#FF6B6B'],
-            startangle=90
-        )
+        fig_pie, ax_pie = plt.subplots(figsize=(1, 1))
+        wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%',
+                                              colors=['#95E1D3', '#FF6B6B'], startangle=90)
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
@@ -189,6 +184,5 @@ else:
     st.info("Upload a CSV to begin analysis")
     st.balloons()
 
-# Final polish touch – footer
 st.markdown("---")
-st.caption("Built by [Your Name] • Master’s in Analytics • Actively interviewing for Data Analyst / Jr Data Scientist roles")
+st.caption("Built by Braden Bourgeois • Master’s in Analytics • Open to Data Analyst / Jr Data Scientist roles")
