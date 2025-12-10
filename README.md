@@ -1,7 +1,9 @@
 # Telco Customer Churn Predictive Analytics  
+
 **Live Web App • XGBoost • 0.84–0.86 AUC • Actionable Retention Recommendations**
 
 Live App → https://telco-churn-predictive-analytics-fxzetpmqbpvhvd7twxoyuj.streamlit.app/
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://telco-churn-predictive-analytics-fxzetpmqbpvhvd7twxoyuj.streamlit.app/)
 
 Upload any customer CSV → get **instant churn predictions + personalized retention suggestions** for every customer, plus one-click PDF/CSV export.
 
