@@ -1,4 +1,4 @@
-# streamlit_app.py – FINAL 
+# streamlit_app.py – FINAL VERSION 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,14 +10,7 @@ import matplotlib.pyplot as plt
 from fpdf import FPDF
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
-
-# title
-st.markdown("""
-<div style="background: linear-gradient(90deg, #FF6B6B, #4ECDC4); padding: 12px; border-radius: 12px; border: none; text-align: center; color: white; font-size: 24px; font-weight: bold; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-Live Production-Ready Churn Prediction Tool — Used by stakeholders in seconds
-</div>
-""", unsafe_allow_html=True)
-
+st.title("Telco Customer Churn Predictor")
 st.markdown("**Pre-trained XGBoost • 0.84–0.86 AUC • Actionable Retention Insights**")
 
 # Direct sample CSV download
@@ -47,7 +40,7 @@ def load_model_and_features():
         features = pd.read_csv(feat_url)["feature"].tolist()
         if os.path.exists(local_model):
             os.remove(local_model)
-        st.success("Model loaded successfully!")
+        st.write("Model loaded — engineered features confirmed!")
         return model, features
     except Exception as e:
         st.error(f"Load failed: {e}")
@@ -178,10 +171,9 @@ if uploaded is not None:
 
         # Downloads 
         st.subheader("Export Results")
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1, 1])
         with col1:
             st.download_button("Download Predictions CSV", result.to_csv(index=False), "telco_churn_predictions.csv", "text/csv")
-        with col1:  
             pdf_bytes = create_pdf(result, len(high_risk))
             st.download_button("Download Full PDF Report (Top 100)", pdf_bytes, "telco_churn_report.pdf", "application/pdf")
 
