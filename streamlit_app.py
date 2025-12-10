@@ -135,7 +135,7 @@ if uploaded is not None:
         fig, ax = plt.subplots(figsize=(8, 3.5)
         ax.barh(imp_df["Feature"], imp_df["Importance"], color='#FF6B6B')
         ax.set_xlabel("Importance"); ax.invert_yaxis()
-        st.pyplot(fig)
+        st.pyplot(fig))
 
         # Tiny pie chart
         st.subheader("Churn Risk Distribution")
