@@ -1,4 +1,4 @@
-# streamlit_app.py – FINAL, ERROR-FREE VERSION (deploy & forget)
+# streamlit_app.py – FINAL 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,16 +10,16 @@ import matplotlib.pyplot as plt
 from fpdf import FPDF
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
-st.title("Telco Customer Churn Predictor")
 
 # title
 st.markdown("""
-<div style="background: linear-gradient(90deg, #FF6B6B, #4ECDC4); padding: 12px; border-radius: 12px; text-align: center; color: white; font-size: 18px; font-weight: bold; margin-bottom: 25px;">
+<div style="background: linear-gradient(90deg, #FF6B6B, #4ECDC4); padding: 12px; border-radius: 12px; border: none; text-align: center; color: white; font-size: 24px; font-weight: bold; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
 Live Production-Ready Churn Prediction Tool — Used by stakeholders in seconds
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("**Pre-trained XGBoost • 0.84–0.86 AUC • Actionable Retention Insights**")
+
 # Direct sample CSV download
 sample_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv"
 st.sidebar.markdown(f"**Test with sample data:** [Download telco_churn.csv]({sample_url})")
@@ -55,7 +55,7 @@ def load_model_and_features():
 
 model, feature_names = load_model_and_features()
 
-# Preprocessing
+# Preprocessing + suggestions
 def preprocess(df):
     df = df.copy()
     if "TotalCharges" in df.columns:
@@ -92,7 +92,7 @@ def get_suggestion(row):
     if row.get('Num_Services', 0) < 3: s.append("Upsell add-ons")
     return "; ".join(s) or "Monitor closely"
 
-# PDF Report – now uses plain ASCII "->" instead of arrow
+# PDF Report
 def create_pdf(result, high_risk_count):
     pdf = FPDF()
     pdf.add_page()
@@ -132,7 +132,7 @@ if uploaded is not None:
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
 
-               # Key Insight — 4 powerful bullets
+        # Updated Key Insight
         st.subheader("Key Business Insights from the Model")
         st.info("""
         • **Month-to-month contract customers are by far the most likely to churn** (35–45% risk)  
@@ -141,7 +141,7 @@ if uploaded is not None:
         • Customers with **few or no add-on services** are prime upsell targets
         """)
 
-        # Feature importance
+        # Top Churn Drivers 
         st.subheader("Top Churn Drivers")
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": model.feature_importances_}).sort_values("Importance", ascending=False).head(10)
         fig, ax = plt.subplots(figsize=(8, 3.5))
@@ -149,19 +149,18 @@ if uploaded is not None:
         ax.set_xlabel("Importance"); ax.invert_yaxis()
         st.pyplot(fig)
 
-        # Tiny pie chart
+        # Churn Risk Distribution 
         st.subheader("Churn Risk Distribution")
         counts = result["Prediction"].value_counts()
         fig_pie, ax_pie = plt.subplots(figsize=(4, 4))
-        wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%',
-                                              colors=['#95E1D3', '#FF6B6B'], startangle=90)
+        wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%', colors=['#95E1D3', '#FF6B6B'], startangle=90)
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
         ax_pie.axis('equal')
         st.pyplot(fig_pie)
 
-        # High-risk segmentation
+        # High-Risk by Contract
         st.subheader("High-Risk Customers by Contract Type")
         high_risk = result[result["Churn_Probability"] >= 0.5].copy()
         if not high_risk.empty:
@@ -177,18 +176,14 @@ if uploaded is not None:
             })
             st.dataframe(seg.style.background_gradient(cmap="Oranges", subset=["Avg_Probability"]))
 
-        # Downloads
+        # Downloads 
+        st.subheader("Export Results")
         col1, col2 = st.columns(2)
         with col1:
-            st.download_button("Download CSV", result.to_csv(index=False), "predictions.csv", "text/csv")
-        with col2:
+            st.download_button("Download Predictions CSV", result.to_csv(index=False), "telco_churn_predictions.csv", "text/csv")
+        with col1:  
             pdf_bytes = create_pdf(result, len(high_risk))
-            st.download_button(
-                label="Download PDF Report (Top 100)",
-                data=pdf_bytes,
-                file_name="telco_churn_report.pdf",
-                mime="application/pdf"
-            )
+            st.download_button("Download Full PDF Report (Top 100)", pdf_bytes, "telco_churn_report.pdf", "application/pdf")
 
     except Exception as e:
         st.error(f"Error: {e}")
