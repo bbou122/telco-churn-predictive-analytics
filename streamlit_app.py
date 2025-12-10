@@ -132,10 +132,10 @@ if uploaded is not None:
         # Feature importance
         st.subheader("Top Churn Drivers")
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": model.feature_importances_}).sort_values("Importance", ascending=False).head(10)
-        fig, ax = plt.subplots(figsize=(8, 3.5)
+        fig, ax = plt.subplots(figsize=(8, 3.5))
         ax.barh(imp_df["Feature"], imp_df["Importance"], color='#FF6B6B')
         ax.set_xlabel("Importance"); ax.invert_yaxis()
-        st.pyplot(fig))
+        st.pyplot(fig)
 
         # Tiny pie chart
         st.subheader("Churn Risk Distribution")
