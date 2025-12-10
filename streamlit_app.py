@@ -1,4 +1,4 @@
-# streamlit_app.py – FINAL VERSION 
+# streamlit_app.py – FINAL
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,22 +10,20 @@ import matplotlib.pyplot as plt
 from fpdf import FPDF
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
-st.title("Telco Customer Churn Predictor")
 
+# banner
 st.markdown("""
-<div style="background: linear-gradient(90deg, #FF6B6B, #4ECDC4); padding: 12px; border-radius: 12px; text-align: center; color: white; font-size: 18px; font-weight: bold; margin-bottom: 25px;">
+<div style="background: linear-gradient(90deg, #FF6B6B, #4ECDC4); padding: 12px; border-radius: 12px; text-align: center; color: white; font-size: 24px; font-weight: bold; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
 Live Production-Ready Churn Prediction Tool — Used by stakeholders in seconds
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("**Pre-trained XGBoost • 0.84–0.86 AUC • Actionable Retention Insights**")
 
-# Direct sample CSV download
-sample_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv"
-st.sidebar.markdown(f"**Test with sample data:** [Download telco_churn.csv]({sample_url})")
+# Sidebar
+st.sidebar.markdown("**Test with sample data:** [Download telco_churn.csv](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
 
-# Help section
-with st.expander("How to Use This App", expanded=False):
+with st.sidebar.expander("How to Use This App"):
     st.markdown("""
     1. Upload a CSV (or use the sample above)  
     2. Get instant predictions + personalized suggestions  
@@ -33,8 +31,11 @@ with st.expander("How to Use This App", expanded=False):
     4. Export as CSV or full PDF report (top 100 customers)
     """)
 
-# Load model
-@st.cache_resource
+st.sidebar.header("Upload Customer Data")
+uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
+
+# ——— LOAD MODEL
+@st.cache_resource(show_spinner=False)
 def load_model_and_features():
     model_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/model.json"
     feat_url  = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/model/feature_names.csv"
@@ -47,15 +48,14 @@ def load_model_and_features():
         features = pd.read_csv(feat_url)["feature"].tolist()
         if os.path.exists(local_model):
             os.remove(local_model)
-        st.write("Model loaded — engineered features confirmed!")
         return model, features
     except Exception as e:
-        st.error(f"Load failed: {e}")
+        st.error(f"Failed to load model: {e}")
         st.stop()
 
 model, feature_names = load_model_and_features()
 
-# Preprocessing + suggestions
+# Preprocessing
 def preprocess(df):
     df = df.copy()
     if "TotalCharges" in df.columns:
@@ -113,9 +113,6 @@ def create_pdf(result, high_risk_count):
         return f.read()
 
 # Main app
-st.sidebar.header("Upload Customer Data")
-uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
-
 if uploaded is not None:
     try:
         data = pd.read_csv(uploaded, encoding='latin1')
@@ -130,9 +127,13 @@ if uploaded is not None:
         result['Retention Suggestion'] = processed_data.apply(get_suggestion, axis=1)
 
         st.success(f"Scored {len(result)} customers!")
+
+        # Show success message only after upload
+        st.success("Model loaded — engineered features confirmed!")
+
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
 
-        # Updated Key Insight
+        # 4 Key Insights
         st.subheader("Key Business Insights from the Model")
         st.info("""
         • **Month-to-month contract customers are by far the most likely to churn** (35–45% risk)  
@@ -149,18 +150,16 @@ if uploaded is not None:
         ax.set_xlabel("Importance"); ax.invert_yaxis()
         st.pyplot(fig)
 
-        # Churn Risk Distribution 
+        # Pie Chart (Risk Distribution)
         st.subheader("Churn Risk Distribution")
         counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(4, 4))
-        wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%', colors=['#95E1D3', '#FF6B6B'], startangle=90)
-        for autotext in autotexts:
-            autotext.set_color('white')
-            autotext.set_fontweight('bold')
+        fig_pie, ax_pie = plt.subplots(figsize=(3.5, 3.5))
+        ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%', colors=['#95E1D3', '#FF6B6B'], startangle=90,
+                    textprops={'color':"white", 'weight':'bold', 'fontsize':10})
         ax_pie.axis('equal')
         st.pyplot(fig_pie)
 
-        # High-Risk by Contract
+        # High-risk segmentation
         st.subheader("High-Risk Customers by Contract Type")
         high_risk = result[result["Churn_Probability"] >= 0.5].copy()
         if not high_risk.empty:
@@ -176,11 +175,12 @@ if uploaded is not None:
             })
             st.dataframe(seg.style.background_gradient(cmap="Oranges", subset=["Avg_Probability"]))
 
-        # Downloads 
+        # Export section
         st.subheader("Export Results")
-        col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns([1, 3])
         with col1:
             st.download_button("Download Predictions CSV", result.to_csv(index=False), "telco_churn_predictions.csv", "text/csv")
+        with col1:
             pdf_bytes = create_pdf(result, len(high_risk))
             st.download_button("Download Full PDF Report (Top 100)", pdf_bytes, "telco_churn_report.pdf", "application/pdf")
 
