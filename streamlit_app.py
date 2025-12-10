@@ -11,6 +11,13 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
+
+st.markdown("""
+<div style="background: linear-gradient(90deg, #FF6B6B, #4ECDC4); padding: 12px; border-radius: 12px; text-align: center; color: white; font-size: 18px; font-weight: bold; margin-bottom: 25px;">
+Live Production-Ready Churn Prediction Tool — Used by stakeholders in seconds
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown("**Pre-trained XGBoost • 0.84–0.86 AUC • Actionable Retention Insights**")
 
 # Direct sample CSV download
