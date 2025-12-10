@@ -1,4 +1,4 @@
-# streamlit_app.py – FINAL VERSION 
+# streamlit_app.py – FINAL 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,16 +11,19 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="Telco Churn Predictor", layout="wide")
 st.title("Telco Customer Churn Predictor")
-st.markdown("**Pre-trained XGBoost • 0.84+ AUC • Instant Predictions**")
+st.markdown("**Pre-trained XGBoost • 0.84–0.86 AUC • Actionable Retention Insights**")
+
+# 3. Direct CSV download link (no raw GitHub view)
+sample_csv_url = "https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv"
+st.sidebar.markdown(f"**Test with sample data:** [Download telco_churn.csv]({sample_csv_url})")
 
 # Help section
-with st.expander("How to Use This App – Click to expand", expanded=False):
+with st.expander("How to Use This App", expanded=False):
     st.markdown("""
-    1. Upload a CSV with the same columns as the sample  
-    2. Get predictions + retention suggestions instantly  
-    3. Explore stats, charts, and high-risk segmentation  
-    4. Download results as CSV or full PDF report  
-    → Sample file: [Download telco_churn.csv](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)
+    1. Upload a CSV (or use the sample above)  
+    2. Get **instant predictions + personalized suggestions**  
+    3. View **summary stats, top drivers, and high-risk segmentation**  
+    4. Export results as CSV or **full PDF report** (top 100 customers)
     """)
 
 # Load model
@@ -37,16 +40,15 @@ def load_model_and_features():
         features = pd.read_csv(feat_url)["feature"].tolist()
         if os.path.exists(local_model):
             os.remove(local_model)
-        st.write("Model loaded — engineered features confirmed!")
+        st.success("Model loaded successfully!")
         return model, features
     except Exception as e:
         st.error(f"Load failed: {e}")
         st.stop()
-        return None, None
 
 model, feature_names = load_model_and_features()
 
-# Preprocessing
+# Preprocessing + suggestions
 def preprocess(df):
     df = df.copy()
     if "TotalCharges" in df.columns:
@@ -80,10 +82,10 @@ def get_suggestion(row):
     if row.get('Month_to_Month', 0) == 1: s.append("Offer long-term contract discount")
     if row.get('Fiber_Optic', 0) == 1: s.append("Improve fiber service quality")
     if row.get('No_TechSupport', 0) == 1: s.append("Bundle tech support")
-    if row.get('Num_Services', 0) < 3: s.append("Upsell add-on services")
-    return "; ".join(s) or "Monitor"
+    if row.get('Num_Services', 0) < 3: s.append("Upsell add-ons")
+    return "; ".join(s) or "Monitor closely"
 
-# PDF Report
+# PDF Report – now top 100 customers
 def create_pdf(result, high_risk_count):
     pdf = FPDF()
     pdf.add_page()
@@ -94,16 +96,16 @@ def create_pdf(result, high_risk_count):
     pdf.cell(0, 10, f"Total Customers: {len(result)} | High-Risk: {high_risk_count} ({high_risk_count/len(result)*100:.1f}%)", ln=1)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Top 10 At-Risk Customers & Suggestions", ln=1)
-    pdf.set_font("Arial", size=10)
-    for _, row in result.head(10).iterrows():
-        line = f"{row['customerID']}: {row['Churn_Probability']:.3f} -> {row['Retention Suggestion']}"
-        pdf.cell(0, 8, line, ln=1)
+    pdf.cell(0, 10, "Top 100 Highest-Risk Customers", ln=1)
+    pdf.set_font("Arial", size=9)
+    for _, row in result.head(100).iterrows():
+        line = f"{row['customerID']}: {row['Churn_Probability']:.3f} → {row['Retention Suggestion']}"
+        pdf.cell(0, 6, line, ln=1)
     pdf.output("churn_report.pdf")
     with open("churn_report.pdf", "rb") as f:
         return f.read()
 
-# MAIN UI
+# Main app
 st.sidebar.header("Upload Customer Data")
 uploaded = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
@@ -122,26 +124,32 @@ if uploaded is not None:
 
         st.success(f"Scored {len(result)} customers!")
         st.dataframe(result.style.background_gradient(cmap="Reds", subset=["Churn_Probability"]))
-        st.download_button("Download CSV", result.to_csv(index=False), "predictions.csv", "text/csv")
 
-        high_risk_count = len(result[result["Churn_Probability"] >= 0.5])
-        st.subheader("Summary Stats")
-        st.markdown(f"- Average Churn Probability: **{result['Churn_Probability'].mean():.3f}**\n- High-Risk Customers: **{high_risk_count} ({high_risk_count/len(result)*100:.1f}%)**")
+        # 5. Summary stats – now with your exact message
+        st.subheader("Key Insight")
+        st.info("**Month-to-month contract customers are by far the most likely to churn** — this group consistently shows 35–45% churn risk in the data.")
 
+        # Feature importance (smaller)
         st.subheader("Top Churn Drivers")
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": model.feature_importances_}).sort_values("Importance", ascending=False).head(10)
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.barh(imp_df["Feature"], imp_df["Importance"], color='skyblue')
+        fig, ax = plt.subplots(figsize=(8, 3.5))
+        ax.barh(imp_df["Feature"], imp_df["Importance"], color='#FF6B6B')
         ax.set_xlabel("Importance"); ax.invert_yaxis()
         st.pyplot(fig)
 
-        st.subheader("Churn Distribution")
+        # 1. Tiny, beautiful pie chart
+        st.subheader("Churn Risk Distribution")
         counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(4, 4))
-        ax_pie.pie(counts, labels=counts.index, autopct='%1.1f%%', colors=['lightgreen','salmon'])
+        fig_pie, ax_pie = plt.subplots(figsize=(3.schema, 3))  # tiny & clean
+        wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%',
+                                              colors=['#95E1D3', '#FF6B6B'], startangle=90)
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+        ax_pie.axis('equal')
         st.pyplot(fig_pie)
 
-        # SEGMENTATION BY CONTRACT (restored!)
+        # High-risk segmentation
         st.subheader("High-Risk Customers by Contract Type")
         high_risk = result[result["Churn_Probability"] >= 0.5].copy()
         if not high_risk.empty:
@@ -149,28 +157,33 @@ if uploaded is not None:
             seg = high_risk.groupby('Contract').agg(
                 Count=('customerID', 'count'),
                 Avg_Probability=('Churn_Probability', 'mean')
-            ).round(3)
-            seg['Suggestion'] = seg.index.map({
-                'Month-to-month': 'Offer 1-year contract discount',
-                'One year': 'Renewal incentive',
-                'Two year': 'Reward loyalty'
-            }).fillna('Monitor')
+            ).round(3).sort_values("Avg_Probability", ascending=False)
+            seg['Recommendation'] = seg.index.map({
+                'Month-to-month': 'Urgent — offer 1-year plan discount',
+                'One year': 'Renewal campaign needed',
+                'Two year': 'Loyal — reward & retain'
+            })
             st.dataframe(seg.style.background_gradient(cmap="Oranges", subset=["Avg_Probability"]))
-        else:
-            st.write("No high-risk customers in this batch.")
 
-        # PDF Download
-        pdf_bytes = create_pdf(result, high_risk_count)
-        st.download_button(
-            label="Download Full PDF Report",
-            data=pdf_bytes,
-            file_name="churn_report.pdf",
-            mime="application/pdf"
-        )
+        # Downloads
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button("Download CSV", result.to_csv(index=False), "predictions.csv", "text/csv")
+        with col2:
+            pdf_bytes = create_pdf(result, len(high_risk))
+            st.download_button(
+                label="Download PDF Report (Top 100)",
+                data=pdf_bytes,
+                file_name="telco_churn_report.pdf",
+                mime="application/pdf"
+            )
 
     except Exception as e:
         st.error(f"Error: {e}")
 else:
-    st.info("Upload CSV to begin!")
-    st.markdown("**Test file:** [Download sample](https://raw.githubusercontent.com/bbou122/telco-churn-predictive-analytics/main/data/raw/telco_churn.csv)")
+    st.info("Upload a CSV to begin analysis")
     st.balloons()
+
+# Final polish touch – footer
+st.markdown("---")
+st.caption("Built by [Your Name] • Master’s in Analytics • Actively interviewing for Data Analyst / Jr Data Scientist roles")
