@@ -137,12 +137,17 @@ if uploaded is not None:
         ax.set_xlabel("Importance"); ax.invert_yaxis()
         st.pyplot(fig)
 
-        # 1. Tiny, beautiful pie chart
+                # 1. Tiny & beautiful pie chart (now fixed!)
         st.subheader("Churn Risk Distribution")
         counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(3.schema, 3))  # tiny & clean
-        wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%',
-                                              colors=['#95E1D3', '#FF6B6B'], startangle=90)
+        fig_pie, ax_pie = plt.subplots(figsize=(4, 4))          # ← fixed: 4, 4 (not 3.schema)
+        wedges, texts, autotexts = ax_pie.pie(
+            counts,
+            labels=counts.index,
+            autopct='%1.0f%%',
+            colors=['#95E1D3', '#FF6B6B'],
+            startangle=90
+        )
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
