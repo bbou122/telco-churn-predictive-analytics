@@ -140,7 +140,7 @@ if uploaded is not None:
         # Tiny pie chart
         st.subheader("Churn Risk Distribution")
         counts = result["Prediction"].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(1, 1))
+        fig_pie, ax_pie = plt.subplots(figsize=(4, 4))
         wedges, texts, autotexts = ax_pie.pie(counts, labels=counts.index, autopct='%1.0f%%',
                                               colors=['#95E1D3', '#FF6B6B'], startangle=90)
         for autotext in autotexts:
